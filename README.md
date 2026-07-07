@@ -89,3 +89,12 @@ pytest -q
 ```
 
 Coverage is configured with `pytest-cov` in `pyproject.toml` and runs automatically with pytest.
+
+## Release Publishing
+
+The publish workflow runs when a GitHub release is published (`release.published`).
+
+Release tags must use one of these formats:
+
+- `MAJOR.MINOR.PATCH` (example: `1.2.3`)
+- `MAJOR.MINOR.PATCHaALPHA` (example: `0.0.0a1`)
