@@ -21,9 +21,43 @@ SOURCE_BIB = """@article{has_doi,
 }
 """
 
+SORT_BIB = """@article{zeta,
+    title = {Zulu},
+    author = {Zed Author},
+    abstract = {Gamma abstract},
+    keywords = {pear, orange},
+    citations = {11},
+}
+
+@article{alpha,
+    title = {Alpha},
+    author = {Alice Author},
+    abstract = {Alpha abstract},
+    keywords = {apple, banana},
+    citations = {2},
+}
+
+@article{beta,
+    title = {Beta},
+    author = {Bob Author},
+    abstract = {Beta abstract},
+    keywords = {kiwi, lemon},
+    citations = {7},
+}
+"""
+
 
 def _parse_entries(text: str):
-    return {entry["ID"]: entry for entry in bibtexparser.loads(text).entries}
+    entries = {}
+    for entry in bibtexparser.parse_string(text).entries:
+        parsed = {field.key: field.value for field in entry.fields}
+        parsed["ID"] = entry.key
+        entries[entry.key] = parsed
+    return entries
+
+
+def _entry_order(text: str):
+    return [entry.key for entry in bibtexparser.parse_string(text).entries]
 
 
 def test_source_and_destination_paths(tmp_path, monkeypatch):
@@ -138,3 +172,65 @@ def test_original_fields_are_preserved(tmp_path, monkeypatch):
     entries = _parse_entries(dest.read_text(encoding="utf-8"))
     assert entries["has_doi"]["year"] == "2020"
     assert entries["has_doi"]["doi"] == "10.1234/abc"
+
+
+def test_sort_by_field_defaults_to_asc(tmp_path, monkeypatch):
+    source = tmp_path / "source.bib"
+    dest = tmp_path / "dest.bib"
+    source.write_text(SORT_BIB, encoding="utf-8")
+
+    monkeypatch.setattr("doi_reference_enricher.enricher.fetch_openalex_data", lambda _doi: {})
+    monkeypatch.setattr("doi_reference_enricher.enricher.fetch_crossref_data", lambda _doi: {})
+
+    cli.main(["--sort-by", "title", str(source), str(dest)])
+
+    assert _entry_order(dest.read_text(encoding="utf-8")) == ["alpha", "beta", "zeta"]
+
+
+def test_sort_by_field_with_explicit_asc(tmp_path, monkeypatch):
+    source = tmp_path / "source.bib"
+    dest = tmp_path / "dest.bib"
+    source.write_text(SORT_BIB, encoding="utf-8")
+
+    monkeypatch.setattr("doi_reference_enricher.enricher.fetch_openalex_data", lambda _doi: {})
+    monkeypatch.setattr("doi_reference_enricher.enricher.fetch_crossref_data", lambda _doi: {})
+
+    cli.main(["--sort-by", "title", "asc", str(source), str(dest)])
+
+    assert _entry_order(dest.read_text(encoding="utf-8")) == ["alpha", "beta", "zeta"]
+
+
+def test_sort_by_field_with_desc(tmp_path, monkeypatch):
+    source = tmp_path / "source.bib"
+    dest = tmp_path / "dest.bib"
+    source.write_text(SORT_BIB, encoding="utf-8")
+
+    monkeypatch.setattr("doi_reference_enricher.enricher.fetch_openalex_data", lambda _doi: {})
+    monkeypatch.setattr("doi_reference_enricher.enricher.fetch_crossref_data", lambda _doi: {})
+
+    cli.main(["--sort-by", "title", "desc", str(source), str(dest)])
+
+    assert _entry_order(dest.read_text(encoding="utf-8")) == ["zeta", "beta", "alpha"]
+
+
+@pytest.mark.parametrize(
+    ("field", "expected"),
+    [
+        ("title", ["alpha", "beta", "zeta"]),
+        ("abstract", ["alpha", "beta", "zeta"]),
+        ("keywords", ["alpha", "beta", "zeta"]),
+        ("author", ["alpha", "beta", "zeta"]),
+        ("citations", ["alpha", "beta", "zeta"]),
+    ],
+)
+def test_sort_by_supported_fields(tmp_path, monkeypatch, field, expected):
+    source = tmp_path / "source.bib"
+    dest = tmp_path / "dest.bib"
+    source.write_text(SORT_BIB, encoding="utf-8")
+
+    monkeypatch.setattr("doi_reference_enricher.enricher.fetch_openalex_data", lambda _doi: {})
+    monkeypatch.setattr("doi_reference_enricher.enricher.fetch_crossref_data", lambda _doi: {})
+
+    cli.main(["--sort-by", field, str(source), str(dest)])
+
+    assert _entry_order(dest.read_text(encoding="utf-8")) == expected

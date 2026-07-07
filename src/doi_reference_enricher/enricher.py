@@ -1,11 +1,114 @@
 import json
 import re
+from copy import deepcopy
 from urllib.parse import quote
 from urllib.request import urlopen
 
 import bibtexparser
+import bibtexparser.middlewares as m
+from bibtexparser.library import Library
+from bibtexparser.model import Entry, Field
 
 SUPPORTED_FIELDS = {"title", "abstract", "keywords", "author", "citations"}
+SORT_ORDERS = {"asc", "desc"}
+
+
+if not hasattr(m, "SortBlocksMiddleware"):
+    class SortBlocksMiddleware(m.BlockMiddleware):
+        def __init__(self, key):
+            super().__init__()
+            self._key = key
+
+        def transform(self, library: Library) -> Library:
+            sorted_entries = sorted(library.entries, key=self._key)
+            sorted_iter = iter(sorted_entries)
+            blocks = []
+            for block in library.blocks:
+                if isinstance(block, Entry):
+                    blocks.append(deepcopy(next(sorted_iter)))
+                else:
+                    blocks.append(deepcopy(block))
+            return Library(blocks=blocks)
+
+    m.SortBlocksMiddleware = SortBlocksMiddleware
+
+
+class _DescendingKey:
+    def __init__(self, value):
+        self.value = value
+
+    def __lt__(self, other):
+        return self.value > other.value
+
+    def __eq__(self, other):
+        return self.value == other.value
+
+
+def _entry_get(entry, field: str) -> str:
+    raw = entry.get(field)
+    if raw is None:
+        return ""
+    value = getattr(raw, "value", raw)
+    return str(value).strip()
+
+
+def _entry_set(entry, field: str, value: str):
+    if hasattr(entry, "set_field"):
+        entry.set_field(Field(key=field, value=value))
+        return
+    entry[field] = value
+
+
+def _text_key(value: str):
+    normalized = value.casefold()
+    return normalized == "", normalized
+
+
+def _citations_key(value: str):
+    match = re.search(r"-?\d+", value)
+    if not match:
+        return 1, 0
+    return 0, int(match.group(0))
+
+
+def sort_by_title(entry):
+    return _text_key(_entry_get(entry, "title"))
+
+
+def sort_by_abstract(entry):
+    return _text_key(_entry_get(entry, "abstract"))
+
+
+def sort_by_keywords(entry):
+    return _text_key(_entry_get(entry, "keywords"))
+
+
+def sort_by_author(entry):
+    return _text_key(_entry_get(entry, "author"))
+
+
+def sort_by_citations(entry):
+    return _citations_key(_entry_get(entry, "citations"))
+
+
+SORT_FUNCTIONS = {
+    "title": sort_by_title,
+    "abstract": sort_by_abstract,
+    "keywords": sort_by_keywords,
+    "author": sort_by_author,
+    "citations": sort_by_citations,
+}
+
+
+def _sort_function(field: str, order: str):
+    base = SORT_FUNCTIONS[field]
+    if order == "asc":
+        return base
+
+    def _desc(entry):
+        return _DescendingKey(base(entry))
+
+    return _desc
 
 
 def _doi_to_openalex_url(doi: str) -> str:
@@ -101,7 +204,7 @@ def enrich_entries(entries, whitelist=None):
     selected_fields = set(whitelist or SUPPORTED_FIELDS)
 
     for entry in entries:
-        doi = (entry.get("doi") or "").strip()
+        doi = _entry_get(entry, "doi")
         if not doi:
             continue
 
@@ -115,12 +218,18 @@ def enrich_entries(entries, whitelist=None):
                     crossref = fetch_crossref_data(doi)
                 value = crossref.get(field)
             if value:
-                entry[field] = value
+                _entry_set(entry, field, value)
 
     return entries
 
 
-def enrich_bib(text: str, whitelist=None) -> str:
-    bib_database = bibtexparser.loads(text)
+def enrich_bib(text: str, whitelist=None, sort_by=None, sort_order="asc") -> str:
+    bib_database = bibtexparser.parse_string(text)
     enrich_entries(bib_database.entries, whitelist=whitelist)
-    return bibtexparser.dumps(bib_database)
+
+    prepend_middleware = None
+    if sort_by:
+        sort_function = _sort_function(sort_by, sort_order)
+        prepend_middleware = [m.SortBlocksMiddleware(key=sort_function)]
+
+    return bibtexparser.write_string(bib_database, prepend_middleware=prepend_middleware)

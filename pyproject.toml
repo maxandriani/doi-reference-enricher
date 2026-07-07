@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Enrich BibTeX references from DOI metadata"
 requires-python = ">=3.9"
 dependencies = [
-  "bibtexparser>=1.4.0",
+  "bibtexparser>=2.0.0b9",
 ]
 
 [project.optional-dependencies]
