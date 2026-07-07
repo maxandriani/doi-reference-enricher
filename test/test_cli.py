@@ -60,6 +60,13 @@ def _entry_order(text: str):
     return [entry.key for entry in bibtexparser.parse_string(text).entries]
 
 
+def _run_main_capture_stderr(argv, monkeypatch):
+    stderr = io.StringIO()
+    monkeypatch.setattr(sys, "stderr", stderr)
+    cli.main(argv)
+    return stderr.getvalue()
+
+
 def test_source_and_destination_paths(tmp_path, monkeypatch):
     source = tmp_path / "source.bib"
     dest = tmp_path / "dest.bib"
@@ -234,3 +241,28 @@ def test_sort_by_supported_fields(tmp_path, monkeypatch, field, expected):
     cli.main(["--sort-by", field, str(source), str(dest)])
 
     assert _entry_order(dest.read_text(encoding="utf-8")) == expected
+
+
+def test_duplicate_keys_do_not_emit_unknown_block_warning(tmp_path, monkeypatch):
+        source = tmp_path / "source.bib"
+        dest = tmp_path / "dest.bib"
+        source.write_text(
+                """@article{dup,
+    title = {A},
+    doi = {10.1/a},
+}
+
+@article{dup,
+    title = {B},
+    doi = {10.1/b},
+}
+""",
+                encoding="utf-8",
+        )
+
+        monkeypatch.setattr("doi_reference_enricher.enricher.fetch_openalex_data", lambda _doi: {})
+        monkeypatch.setattr("doi_reference_enricher.enricher.fetch_crossref_data", lambda _doi: {})
+
+        stderr = _run_main_capture_stderr(["--sort-by", "title", str(source), str(dest)], monkeypatch)
+
+        assert "Unknown block type" not in stderr

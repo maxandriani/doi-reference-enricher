@@ -1,6 +1,8 @@
 import json
+import logging
 import re
 from copy import deepcopy
+from contextlib import contextmanager
 from urllib.parse import quote
 from urllib.request import urlopen
 
@@ -11,6 +13,17 @@ from bibtexparser.model import Entry, Field
 
 SUPPORTED_FIELDS = {"title", "abstract", "keywords", "author", "citations"}
 SORT_ORDERS = {"asc", "desc"}
+
+
+@contextmanager
+def _suppress_unknown_block_logs():
+    logger = logging.getLogger("bibtexparser.middlewares.middleware")
+    previous = logger.level
+    logger.setLevel(logging.ERROR)
+    try:
+        yield
+    finally:
+        logger.setLevel(previous)
 
 
 if not hasattr(m, "SortBlocksMiddleware"):
@@ -224,7 +237,8 @@ def enrich_entries(entries, whitelist=None):
 
 
 def enrich_bib(text: str, whitelist=None, sort_by=None, sort_order="asc") -> str:
-    bib_database = bibtexparser.parse_string(text)
+    with _suppress_unknown_block_logs():
+        bib_database = bibtexparser.parse_string(text)
     enrich_entries(bib_database.entries, whitelist=whitelist)
 
     prepend_middleware = None
@@ -232,4 +246,5 @@ def enrich_bib(text: str, whitelist=None, sort_by=None, sort_order="asc") -> str
         sort_function = _sort_function(sort_by, sort_order)
         prepend_middleware = [m.SortBlocksMiddleware(key=sort_function)]
 
-    return bibtexparser.write_string(bib_database, prepend_middleware=prepend_middleware)
+    with _suppress_unknown_block_logs():
+        return bibtexparser.write_string(bib_database, prepend_middleware=prepend_middleware)
