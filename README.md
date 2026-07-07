@@ -16,6 +16,24 @@
 pip install .
 ```
 
+Install the tool as a shell command:
+
+```bash
+python -m pip install --user .
+```
+
+If your user scripts directory is not on `PATH`, add it first:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Then verify the command is available:
+
+```bash
+doi-enricher --help
+```
+
 For local development with tests:
 
 ```bash
