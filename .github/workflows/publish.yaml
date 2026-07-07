@@ -82,7 +82,7 @@ jobs:
           pyproject = pathlib.Path("pyproject.toml")
           text = pyproject.read_text()
           updated = re.sub(
-              r'(?m)^version\\s*=\\s*".*"$',
+              r'(?m)^version\s*=\s*".*"$',
               f'version = "{version}"',
               text,
               count=1,
