@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "doi-reference-enricher"
+version = "0.1.0"
+description = "Enrich BibTeX references from DOI metadata"
+requires-python = ">=3.9"
+dependencies = [
+  "bibtexparser>=1.4.0",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8.0.0",
+  "pytest-cov>=5.0.0",
+]
+
+[project.scripts]
+doi-enricher = "doi_reference_enricher.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+addopts = "--cov=doi_reference_enricher --cov-report=term-missing"
