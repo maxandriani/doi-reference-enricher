@@ -3,63 +3,9 @@ import re
 from urllib.parse import quote
 from urllib.request import urlopen
 
+import bibtexparser
+
 SUPPORTED_FIELDS = {"title", "abstract", "keywords", "author", "citations"}
-
-
-def _strip_wrapping(value: str) -> str:
-    value = value.strip().strip(",").strip()
-    if (value.startswith("{") and value.endswith("}")) or (value.startswith('"') and value.endswith('"')):
-        return value[1:-1].strip()
-    return value
-
-
-def parse_bib(text: str):
-    entries = []
-    current = None
-    for raw_line in text.splitlines():
-        line = raw_line.rstrip()
-        stripped = line.strip()
-        if not stripped:
-            continue
-
-        if stripped.startswith("@") and "{" in stripped:
-            head, _, rest = stripped.partition("{")
-            entry_type = head[1:].strip()
-            key = rest.split(",", 1)[0].strip()
-            current = {"type": entry_type, "key": key, "fields": {}}
-            continue
-
-        if current is None:
-            continue
-
-        if stripped == "}":
-            entries.append(current)
-            current = None
-            continue
-
-        field_match = re.match(r"^([A-Za-z][\w-]*)\s*=\s*(.+?)(,)?$", stripped)
-        if not field_match:
-            continue
-
-        field_name = field_match.group(1).lower()
-        field_value = _strip_wrapping(field_match.group(2))
-        current["fields"][field_name] = field_value
-
-    if current is not None:
-        entries.append(current)
-
-    return entries
-
-
-def dump_bib(entries) -> str:
-    blocks = []
-    for entry in entries:
-        lines = [f"@{entry['type']}{{{entry['key']},"]
-        for name, value in entry["fields"].items():
-            lines.append(f"  {name} = {{{value}}},")
-        lines.append("}")
-        blocks.append("\n".join(lines))
-    return "\n\n".join(blocks) + ("\n" if blocks else "")
 
 
 def _doi_to_openalex_url(doi: str) -> str:
@@ -155,7 +101,7 @@ def enrich_entries(entries, whitelist=None):
     selected_fields = set(whitelist or SUPPORTED_FIELDS)
 
     for entry in entries:
-        doi = (entry["fields"].get("doi") or "").strip()
+        doi = (entry.get("doi") or "").strip()
         if not doi:
             continue
 
@@ -169,12 +115,12 @@ def enrich_entries(entries, whitelist=None):
                     crossref = fetch_crossref_data(doi)
                 value = crossref.get(field)
             if value:
-                entry["fields"][field] = value
+                entry[field] = value
 
     return entries
 
 
 def enrich_bib(text: str, whitelist=None) -> str:
-    entries = parse_bib(text)
-    enrich_entries(entries, whitelist=whitelist)
-    return dump_bib(entries)
+    bib_database = bibtexparser.loads(text)
+    enrich_entries(bib_database.entries, whitelist=whitelist)
+    return bibtexparser.dumps(bib_database)
